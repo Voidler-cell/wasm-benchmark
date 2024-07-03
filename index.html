@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmark</title>
+  <script src="benchmark.js"></script>
+</head>
+
+<body>
+  <script>
+    function make_environment(env, ...envs) {
+      return new Proxy(env, {
+        get(target, prop, receiver) {
+          if (env[prop] !== undefined) {
+            return env[prop].bind(env);
+          }
+          for (var i = 0; i < envs.length; i++) {
+            if (envs[i][prop] !== undefined) {
+              return envs[i][prop].bind(envs[i]);
+            }
+          }
+          return (...args) => {
+            throw new Error(`NOT IMPLEMENTED: ${prop} ${args}`);
+          }
+        }
+      });
+    }
+
+    async function run() {
+      const TEST_COUNT = 100;
+      const TEST_COUNT_MULTI_LIMIT = 10000; // including
+      const TEST_COUNT_MULTI = 1000;
+
+      let memory = new WebAssembly.Memory({
+        initial: 1024,
+        maximum: 65536
+      })
+
+      const wasm = await WebAssembly.instantiateStreaming(fetch("./build/benchmark-wasm.wasm"), {
+        memory: memory,
+        env: make_environment({
+          memset: (ptr, val, size) => { },
+          js_random: Math.random
+        })
+      });
+
+      console.log(wasm);
+
+      const xs = [10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000];
+      // const xs = [10, 100, 1000, 10000];
+
+      console.log("Start Tests");
+
+      // Test js
+      // let native_y = xs.map((x) => {
+      //   const test_count = x <= TEST_COUNT_MULTI_LIMIT ? TEST_COUNT * TEST_COUNT_MULTI : TEST_COUNT;
+      //   let startTimeJs = performance.now();
+      //   benchmark(x, test_count);
+      //   let endTimeJs = performance.now();
+      //   let durJs = (endTimeJs - startTimeJs) / test_count;
+      //   console.log("Js: ", durJs, "ms, Test count: ", test_count);
+      //   return `(${x}, ${durJs})`;
+      // });
+      // console.log(native_y);
+
+      // Test wasm c
+      // let wasm_c_y = xs.map((x) => {
+      //   const test_count = x <= TEST_COUNT_MULTI_LIMIT ? TEST_COUNT * TEST_COUNT_MULTI : TEST_COUNT;
+      //   let startTimeWasm = performance.now();
+      //   wasm.instance.exports.c_benchmark(x, test_count);
+      //   let endTimeWasm = performance.now();
+      //   let durWasm = (endTimeWasm - startTimeWasm) / test_count;
+      //   console.log("Wasm c: ", durWasm, "ms, Test count: ", test_count);
+      //   return `(${x}, ${durWasm})`;
+      // });
+      // console.log("Wasm c:", wasm_c_y);
+
+      // Test wasm js
+      let wasm_js_y = xs.map((x) => {
+        const test_count = x <= TEST_COUNT_MULTI_LIMIT ? TEST_COUNT * TEST_COUNT_MULTI : TEST_COUNT;
+        let startTimeWasm = performance.now();
+        wasm.instance.exports.js_benchmark(x, test_count);
+        let endTimeWasm = performance.now();
+        let durWasm = (endTimeWasm - startTimeWasm) / test_count;
+        console.log("Wasm Js: ", durWasm, "ms, Test count: ", test_count);
+        return `(${x}, ${durWasm})`;
+      });
+      console.log("Wasm Js:", wasm_js_y);
+    }
+
+    // run();
+  </script>
+
+</body>
+
+</html>
